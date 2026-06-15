@@ -248,8 +248,32 @@ pub async fn connect_handler_to_whoop_address(address: &str) -> AppResult<WhoopG
         disconnect_connected_whoop().await;
     }
 
+    // On macOS the BLE peripheral id is an opaque CoreBluetooth UUID, and blec's
+    // `connect(id)` only resolves peripherals discovered by a scan in the current
+    // process run. The UUID itself stays stable across restarts, but after a
+    // restart it is not yet in blec's in-process map, so connecting cold fails
+    // with "There is no peripheral with id ...". Re-scan to rediscover the device
+    // and connect using the address the scanner actually reports.
+    //
+    // On other platforms (e.g. Linux) the address is a stable MAC that blec can
+    // connect to directly, so we keep the original cold-connect path to avoid an
+    // extra scan and the risk of blocking when the device is out of range.
+    #[cfg(target_os = "macos")]
+    let connect_address = {
+        let Some(device) = scan_for_saved_whoop(address).await? else {
+            return Err(format!(
+                "WHOOP {address} not found after scanning; move the device closer and retry."
+            )
+            .into());
+        };
+        device.address
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    let connect_address = address.to_string();
+
     handler
-        .connect(address, OnDisconnectHandler::None, false)
+        .connect(&connect_address, OnDisconnectHandler::None, false)
         .await?;
 
     determine_generation_from(handler).await

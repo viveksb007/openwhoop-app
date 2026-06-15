@@ -100,7 +100,7 @@ pub async fn scan_for_saved_whoop(address: &str) -> AppResult<Option<TauriBlecDe
 
         let device = scanned_devices
             .into_iter()
-            .find(|device| device.address == address);
+            .find(|device| device.address.eq_ignore_ascii_case(address));
 
         if device.is_some() {
             return Ok(device);
